@@ -44,10 +44,9 @@ jobs:
           cache: 'npm'
 
       - name: Setup Emscripten (emsdk)
-        uses: mymind/custom-emsdk-action@v2
+        uses: emscripten-core/setup-emsdk@v15
         with:
           version: '3.1.53'
-        continue-on-error: true # Falls back to tree-sitter docker mode if emsdk fails
 
       - name: Install Global Tree-Sitter CLI
         run: |
