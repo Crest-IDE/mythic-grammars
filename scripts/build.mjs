@@ -116,9 +116,58 @@ function buildGrammar(grammar, options) {
   // 3. Determine working directory (subpath support)
   const workDir = grammar.source.subpath ? path.join(repoDir, grammar.source.subpath) : repoDir;
 
+  // 3.5 Ensure tree-sitter configuration exists (for both legacy package.json and modern tree-sitter.json)
+  const pkgPath = path.join(workDir, 'package.json');
+  let pkg = {};
+  if (fs.existsSync(pkgPath)) {
+    try {
+      pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    } catch {}
+  }
+  if (!pkg['tree-sitter']) {
+    pkg.name = pkg.name || `tree-sitter-${grammar.name}`;
+    pkg['tree-sitter'] = [
+      {
+        scope: `source.${grammar.name}`,
+        fileTypes: [grammar.name]
+      }
+    ];
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf-8');
+  }
+
+  const tsConfigPath = path.join(workDir, 'tree-sitter.json');
+  if (!fs.existsSync(tsConfigPath)) {
+    const tsConfig = {
+      grammars: [
+        {
+          name: grammar.name,
+          scope: `source.${grammar.name}`,
+          path: '.'
+        }
+      ]
+    };
+    fs.writeFileSync(tsConfigPath, JSON.stringify(tsConfig, null, 2), 'utf-8');
+  }
+
+  // Generate parser.c if missing
+  const parserCPath = path.join(workDir, 'src/parser.c');
+  const grammarJsPath = path.join(workDir, 'grammar.js');
+  if (!fs.existsSync(parserCPath) && fs.existsSync(grammarJsPath)) {
+    console.log(`[tree-sitter] Generating parser.c for ${grammar.name}...`);
+    try {
+      execSync('tree-sitter generate', { cwd: workDir, stdio: 'inherit' });
+    } catch {
+      execSync('npx --yes tree-sitter-cli generate', { cwd: workDir, stdio: 'inherit' });
+    }
+  }
+
   // 4. Compile with tree-sitter build --wasm
   console.log(`[wasm] Running tree-sitter build --wasm in ${workDir}...`);
-  execSync(`npx --yes tree-sitter-cli build --wasm`, { cwd: workDir, stdio: 'inherit' });
+  try {
+    execSync('tree-sitter build --wasm', { cwd: workDir, stdio: 'inherit' });
+  } catch {
+    execSync('npx --yes tree-sitter-cli build --wasm', { cwd: workDir, stdio: 'inherit' });
+  }
 
   // 5. Locate generated wasm file
   const wasmFiles = fs.readdirSync(workDir).filter((f) => f.endsWith('.wasm'));

@@ -50,7 +50,7 @@ jobs:
 
       - name: Install Global Tree-Sitter CLI
         run: |
-          npm install -g tree-sitter-cli@0.22.6
+          npm install -g tree-sitter-cli@latest
           tree-sitter --version
 
       - name: Install Project Dependencies
