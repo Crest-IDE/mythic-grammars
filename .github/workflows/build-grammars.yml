@@ -120,7 +120,6 @@ jobs:
             - **`manifest.json`**: Checksums, sizes, and compilation metadata.
           files: |
             dist/wasms/*.wasm
-            dist/queries/*.scm
             dist/languages.json
             dist/manifest.json
             dist/queries-manifest.json

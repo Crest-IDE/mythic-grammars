@@ -1,6 +1,14 @@
 import fs from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
 
+// Known overrides for archived/outdated grammar repositories in Helix
+const KNOWN_GRAMMAR_OVERRIDES = {
+  yaml: {
+    git: 'https://github.com/tree-sitter-grammars/tree-sitter-yaml',
+    rev: 'master'
+  }
+};
+
 /**
  * Parses languages.toml into structured grammars and languages list.
  *
@@ -16,12 +24,13 @@ export function parseHelixLanguages(tomlContent) {
   const grammars = new Map();
   for (const g of grammarList) {
     if (g.name && g.source) {
+      const override = KNOWN_GRAMMAR_OVERRIDES[g.name];
       grammars.set(g.name, {
         name: g.name,
         source: {
-          git: g.source.git,
-          rev: g.source.rev,
-          subpath: g.source.subpath || null
+          git: override?.git || g.source.git,
+          rev: override?.rev || g.source.rev,
+          subpath: override?.subpath || g.source.subpath || null
         }
       });
     }
