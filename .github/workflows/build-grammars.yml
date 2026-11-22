@@ -1,0 +1,130 @@
+name: Build Tree-Sitter WASMs & SCM Queries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Language Tier to build'
+        required: true
+        default: 'tier1'
+        type: choice
+        options:
+          - 'tier1'
+          - 'tier2'
+          - 'all'
+      languages:
+        description: 'Custom comma-separated language list (overrides tier, e.g. rust,python,go)'
+        required: false
+        default: ''
+        type: string
+      create_release:
+        description: 'Create or update GitHub Release'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    # Run every Sunday at midnight UTC to sync with Helix updates
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Compile WASMs and Sanitize Queries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Emscripten (emsdk)
+        uses: mymind/custom-emsdk-action@v2
+        with:
+          version: '3.1.53'
+        continue-on-error: true # Falls back to tree-sitter docker mode if emsdk fails
+
+      - name: Install Global Tree-Sitter CLI
+        run: |
+          npm install -g tree-sitter-cli@0.22.6
+          tree-sitter --version
+
+      - name: Install Project Dependencies
+        run: npm ci || npm install
+
+      - name: Run Test Suite
+        run: npm test
+
+      - name: Parse Upstream Helix languages.toml
+        run: npm run parse
+
+      - name: Sanitize and Transpile SCM Queries
+        run: |
+          # Clone helix shallowly to access all runtime queries
+          git clone --depth 1 https://github.com/helix-editor/helix.git /tmp/helix
+          node scripts/sanitize-queries.mjs --queries=/tmp/helix/runtime/queries
+
+      - name: Compile Selected Grammars to WASM
+        run: |
+          BUILD_ARGS="--skip-existing"
+          if [ -n "${{ github.event.inputs.languages }}" ]; then
+            BUILD_ARGS="$BUILD_ARGS --langs=${{ github.event.inputs.languages }}"
+          elif [ -n "${{ github.event.inputs.tier }}" ]; then
+            BUILD_ARGS="$BUILD_ARGS --tier=${{ github.event.inputs.tier }}"
+          else
+            BUILD_ARGS="$BUILD_ARGS --tier=tier1"
+          fi
+          echo "Executing: node scripts/build.mjs $BUILD_ARGS"
+          node scripts/build.mjs $BUILD_ARGS
+
+      - name: Package Dist Artifacts
+        run: |
+          mkdir -p release-bundle
+          tar -czf release-bundle/mythic-wasms.tar.gz -C dist wasms
+          tar -czf release-bundle/mythic-queries.tar.gz -C dist queries
+          cp dist/languages.json release-bundle/
+          cp dist/manifest.json release-bundle/
+          cp dist/queries-manifest.json release-bundle/
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mythic-grammars-dist
+          path: |
+            dist/wasms/*.wasm
+            dist/queries/*.scm
+            dist/languages.json
+            dist/manifest.json
+            dist/queries-manifest.json
+          retention-days: 14
+
+      - name: Create or Update GitHub Release
+        if: ${{ github.event_name == 'schedule' || github.event.inputs.create_release == 'true' || github.event.inputs.create_release == true }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 'Mythic Grammars & Queries (Latest Helix Sync)'
+          body: |
+            ## 🚀 Automated Tree-Sitter WASM & Helix SCM Release
+            Automatically compiled from upstream Helix `languages.toml`.
+
+            ### 📦 Assets Included:
+            - **`mythic-wasms.tar.gz`**: All compiled Tree-sitter WebAssembly binaries.
+            - **`mythic-queries.tar.gz`**: All sanitized & inheritance-resolved `.scm` highlight queries.
+            - **Individual `.wasm` & `.scm` files**: Direct URLs for on-demand lazy loading in web editors.
+            - **`languages.json`**: Index of 340+ languages and grammar mappings.
+            - **`manifest.json`**: Checksums, sizes, and compilation metadata.
+          files: |
+            dist/wasms/*.wasm
+            dist/queries/*.scm
+            dist/languages.json
+            dist/manifest.json
+            dist/queries-manifest.json
+            release-bundle/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

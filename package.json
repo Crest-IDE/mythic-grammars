@@ -1,0 +1,26 @@
+{
+  "name": "@crest-ide/mythic-grammars",
+  "version": "1.0.0",
+  "description": "Automated Tree-sitter WebAssembly (.wasm) and sanitized Helix SCM query builder for Crest and Mythic Editor",
+  "type": "module",
+  "main": "dist/manifest.json",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "parse": "node scripts/parse-languages.mjs",
+    "sanitize": "node scripts/sanitize-queries.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "keywords": [
+    "tree-sitter",
+    "webassembly",
+    "wasm",
+    "helix",
+    "syntax-highlighting",
+    "editor"
+  ],
+  "author": "Crest IDE",
+  "license": "MIT",
+  "dependencies": {
+    "smol-toml": "^1.3.1"
+  }
+}
